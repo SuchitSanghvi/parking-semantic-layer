@@ -1,0 +1,26 @@
+event_date,city,event_name,event_type,expected_attendance
+2024-01-07,san francisco,49ers Playoff Game,Sports,68000
+2024-01-14,LOS ANGELES,Lakers vs Celtics,Sports,20000
+2024-01-21,SEATTLE,Seahawks Home Game,Sports,70000
+2024-02-04,San Francisco,Warriors vs Nuggets,Sports,18000
+2024-02-18,los angeles,Clippers Home Game,Sports,19000
+2024-03-10,SEATTLE,Sounders Home Opener,Sports,40000
+2024-03-24,San Francisco,Giants Opening Day,Sports,42000
+2024-01-13,los angeles,Taylor Swift Eras Tour,Concert,55000
+2024-01-27,san francisco,Beyonce Renaissance Tour,Concert,50000
+2024-02-10,seattle,Pearl Jam Homecoming,Concert,45000
+2024-02-24,LOS ANGELES,Bad Bunny World Tour,Concert,60000
+2024-03-16,San Francisco,Coachella Preview Night,Concert,25000
+2024-01-20,Los Angeles,LA Food & Wine Festival,Festival,12000
+2024-02-03,SEATTLE,Seattle Beer Fest,Festival,8000
+2024-02-17,SAN FRANCISCO,SF Street Food Fest,Festival,15000
+2024-03-02,los angeles,Rose Bowl Flea Market,Festival,20000
+2024-03-09,san francisco,Chinatown New Year Parade,Festival,30000
+2024-03-23,seattle,Sakura Festival,Festival,18000
+2024-01-01,SAN FRANCISCO,Oracle Park Concert,Concert,40000
+2024-02-08,Los Angeles,Crypto.com Arena Event,Sports,20000
+2024-03-08,seattle,Seattle Marathon,Festival,10000
+2024-01-08,los angeles,Grammy Awards,Concert,18000
+2024-02-01,san francisco,SF Marathon,Festival,25000
+2024-01-13,los angeles,Taylor Swift - Eras Tour,Concert,55000
+2024-02-04,SAN FRANCISCO,Warriors Vs Nuggets,sports,18000

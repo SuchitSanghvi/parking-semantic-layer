@@ -1,0 +1,8 @@
+parking_semantic_layer:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: 'target/dev.duckdb'
+      schema: main
+      threads: 4

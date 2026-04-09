@@ -1,0 +1,161 @@
+version: 2
+
+sources:
+  - name: parking_raw
+    description: >
+      Raw seed tables representing LPR camera event data, lot master data, and
+      local event data as loaded directly from CSV files. Intentionally messy —
+      see staging models for cleaning logic.
+    schema: main_raw
+    # seeds land in main_raw because dbt_project.yml sets seeds +schema: raw
+    tables:
+      - name: raw_parking_events
+        description: One row per LPR camera trigger (entry or exit). Entry and exit are separate rows joined in the intermediate layer.
+        columns:
+          - name: event_id
+            description: Unique identifier for the camera trigger event.
+          - name: lot_id
+            description: Identifier for the parking lot. May be 'LOT_UNKNOWN' for decommissioned lots.
+          - name: license_plate
+            description: Vehicle license plate as read by the LPR camera.
+          - name: event_type
+            description: "Raw value from camera: ENTRY or EXIT. Mixed casing possible."
+          - name: event_timestamp
+            description: Timestamp of the camera trigger. May have clock-sync issues on ~1% of sessions.
+          - name: amount_charged
+            description: Revenue collected. Always NULL/blank on ENTRY rows; NULL on ~5% of EXIT rows (drive-offs).
+          - name: payment_method
+            description: "Payment channel. Inconsistent casing: app/App/APP, web/Web, text, NULL."
+          - name: camera_id
+            description: Identifier of the specific camera that triggered the event.
+
+      - name: raw_lots
+        description: Lot master data for 8 parking locations across SF, LA, and Seattle.
+        columns:
+          - name: lot_id
+            description: Primary key for the lot.
+          - name: city
+            description: "Inconsistent casing across rows: 'San Francisco', 'san francisco', 'SAN FRANCISCO'."
+          - name: capacity
+            description: Number of spaces. One lot has NULL capacity (fallback to 85 in staging).
+          - name: market_type
+            description: "Inconsistent values: urban/Urban/URBAN, suburban, mixed-use/Mixed Use."
+          - name: activation_date
+            description: "Two date formats present: YYYY-MM-DD and MM/DD/YYYY."
+
+      - name: raw_local_events
+        description: Local events (sports, concerts, festivals) that may drive parking demand spikes.
+        columns:
+          - name: event_date
+            description: Date of the event.
+          - name: city
+            description: Host city. Inconsistent casing to match raw_lots messiness.
+          - name: event_name
+            description: Event name. Two near-duplicate rows exist representing duplicate data entry.
+
+models:
+  - name: stg_parking_events
+    description: >
+      Cleaned parking events. Filters to ENTRY/EXIT only, standardizes payment_method
+      to lowercase, casts event_timestamp to TIMESTAMP, and flags rows with missing
+      amount_charged. Does NOT drop messy rows — flags them for downstream handling.
+    columns:
+      - name: event_id
+        description: Unique identifier for the camera trigger event.
+        data_tests:
+          - not_null
+          - unique
+      - name: lot_id
+        description: Parking lot identifier (includes LOT_UNKNOWN rows).
+        data_tests:
+          - not_null
+      - name: license_plate
+        description: Cleaned license plate string.
+        data_tests:
+          - not_null
+      - name: event_type
+        description: Lowercased event type — 'entry' or 'exit'.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['entry', 'exit']
+      - name: event_timestamp
+        description: Camera trigger time cast to TIMESTAMP.
+        data_tests:
+          - not_null
+      - name: amount_charged
+        description: Revenue collected. NULL on all entry rows and ~5% of exit rows.
+      - name: payment_method
+        description: Lowercased payment channel. NULL where not recorded.
+      - name: is_amount_missing
+        description: True when amount_charged is NULL. Useful for flagging drive-offs.
+        data_tests:
+          - not_null
+
+  - name: stg_lots
+    description: >
+      Cleaned lot dimension. City and state are standardized (INITCAP/UPPER),
+      market_type variants are mapped to canonical snake_case values,
+      NULL capacity defaults to 85, and activation_date is parsed from
+      two possible input formats.
+    columns:
+      - name: lot_id
+        description: Primary key for the lot.
+        data_tests:
+          - not_null
+          - unique
+      - name: city
+        description: INITCAP-normalized city name.
+        data_tests:
+          - not_null
+      - name: state
+        description: UPPER-normalized two-letter state code.
+        data_tests:
+          - not_null
+      - name: capacity
+        description: Number of spaces. NULL when not recorded in the source — see is_capacity_missing flag.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: is_capacity_missing
+        description: True when capacity was NULL in the raw source. Downstream models should filter or handle this explicitly.
+        data_tests:
+          - not_null
+      - name: market_type
+        description: "Canonical market type: urban, suburban, or mixed_use."
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['urban', 'suburban', 'mixed_use']
+      - name: activation_date
+        description: Lot activation date parsed to DATE regardless of input format.
+        data_tests:
+          - not_null
+
+  - name: stg_local_events
+    description: >
+      Cleaned local events. Deduplicated on (event_date, city, event_name)
+      case-insensitively, keeping the first occurrence. City is INITCAP-normalized
+      and event_type is lowercased.
+    columns:
+      - name: event_date
+        description: Date of the event, cast to DATE.
+        data_tests:
+          - not_null
+      - name: city
+        description: INITCAP-normalized city name.
+        data_tests:
+          - not_null
+      - name: event_name
+        description: Event name (original casing preserved post-dedup).
+        data_tests:
+          - not_null
+      - name: event_type
+        description: Lowercased event type (sports, concert, festival).
+        data_tests:
+          - not_null
+      - name: expected_attendance
+        description: Expected number of attendees.
+        data_tests:
+          - not_null

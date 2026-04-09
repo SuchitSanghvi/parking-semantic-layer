@@ -1,0 +1,9 @@
+lot_id,lot_name,city,state,zip,capacity,market_type,activation_date,owner_name
+LOT_SF_01,Mission St Garage,San Francisco,CA,94103,120,urban,2022-03-15,Bay Area Parking LLC
+LOT_SF_02,SoMa Surface Lot,san francisco,CA,94105,60,Urban,01/20/2021,Urban Holdings Inc
+LOT_SF_03,Civic Center Plaza,SAN FRANCISCO,CA,94102,,URBAN,2020-07-01,Civic Properties
+LOT_LA_01,Downtown LA Garage,Los Angeles,CA,90012,200,urban,2021-11-10,SoCal Park Co
+LOT_LA_02,Hollywood Blvd Lot,los angeles,CA,90028,90,mixed-use,03/05/2022,Sunset Ventures
+LOT_LA_03,LAX Economy Parking,LOS ANGELES,CA,90045,300,Mixed Use,2019-06-01,Airport Partners
+LOT_SEA_01,Pike Place Market Lot,Seattle,WA,98101,80,suburban,2023-01-15,PNW Parking Group
+LOT_SEA_02,Capitol Hill Surface Lot,Seattle,WA,98102,50,suburban,09/30/2022,Hill Properties LLC
