@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: int_sessions
+    description: >
+      One row per parking session assembled from paired ENTRY and EXIT events.
+      Uses a two-pass matching strategy: forward ASOF JOIN for normal sessions,
+      then a backward pass for clock-sync bug sessions (exit before entry).
+      All session types are kept — orphaned entries, orphaned exits, negative-duration
+      sessions, and duplicate entries are flagged for the mart layer to filter.
+    columns:
+      - name: session_id
+        description: >
+          Deterministic MD5 surrogate key derived from entry_event_id and exit_event_id.
+          Uniquely identifies each session row including orphaned and flagged sessions.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: entry_event_id
+        description: >
+          FK to stg_parking_events. NULL for orphaned exit rows (no matching entry found).
+
+      - name: exit_event_id
+        description: >
+          FK to stg_parking_events. NULL for orphaned entry rows (no matching exit found).
+
+      - name: lot_id
+        description: Parking lot identifier. Carries through from the entry (or exit for orphaned exits).
+        data_tests:
+          - not_null
+
+      - name: license_plate
+        description: Vehicle license plate. Same value on paired entry and exit.
+        data_tests:
+          - not_null
+
+      - name: entry_ts
+        description: Timestamp of the ENTRY event. NULL for orphaned exit rows.
+
+      - name: exit_ts
+        description: Timestamp of the EXIT event. NULL for orphaned entry rows.
+
+      - name: duration_minutes
+        description: >
+          Minutes between entry and exit (exit_ts - entry_ts). NULL when either
+          timestamp is missing. Negative for clock-sync bug sessions where
+          exit_ts < entry_ts.
+
+      - name: amount_charged
+        description: Revenue collected at exit. NULL for orphaned entries and ~5% of exits (drive-offs).
+
+      - name: payment_method
+        description: Lowercased payment channel (app, web, text). NULL when not recorded.
+
+      - name: entry_camera_id
+        description: Camera that triggered the ENTRY event. NULL for orphaned exit rows.
+
+      - name: exit_camera_id
+        description: Camera that triggered the EXIT event. NULL for orphaned entry rows.
+
+      - name: is_orphaned_entry
+        description: True when an ENTRY event has no matching EXIT. Caused by camera misfires or end-of-period truncation.
+        data_tests:
+          - not_null
+
+      - name: is_orphaned_exit
+        description: True when an EXIT event has no matching ENTRY. Vehicle entered before system activation.
+        data_tests:
+          - not_null
+
+      - name: is_negative_duration
+        description: True when exit_ts < entry_ts. Caused by clock-sync bugs between cameras.
+        data_tests:
+          - not_null
+
+      - name: is_duplicate_entry
+        description: True when this ENTRY fired within 120 seconds of a prior ENTRY for the same plate and lot (camera misfire).
+        data_tests:
+          - not_null
