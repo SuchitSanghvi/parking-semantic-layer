@@ -3,6 +3,6 @@ parking_semantic_layer:
   outputs:
     dev:
       type: duckdb
-      path: 'target/dev.duckdb'
+      path: 'warehouse.duckdb'
       schema: main
       threads: 4
