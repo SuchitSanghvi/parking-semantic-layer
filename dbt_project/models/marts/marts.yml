@@ -1,0 +1,320 @@
+version: 2
+
+models:
+  - name: fct_sessions
+    description: >
+      Valid parking sessions only. Filtered from int_sessions to exclude orphaned
+      entries, orphaned exits, negative-duration sessions, and duplicate entries.
+      One row per clean session. Primary fact table for all revenue and duration metrics.
+    columns:
+      - name: session_id
+        description: Surrogate key — MD5 hash of entry_event_id and exit_event_id.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: entry_event_id
+        description: FK to stg_parking_events for the ENTRY event.
+        data_tests:
+          - not_null
+
+      - name: exit_event_id
+        description: FK to stg_parking_events for the EXIT event.
+        data_tests:
+          - not_null
+
+      - name: lot_id
+        description: Parking lot identifier.
+        data_tests:
+          - not_null
+
+      - name: license_plate
+        description: Vehicle license plate.
+        data_tests:
+          - not_null
+
+      - name: entry_ts
+        description: Timestamp of the ENTRY event.
+        data_tests:
+          - not_null
+
+      - name: exit_ts
+        description: Timestamp of the EXIT event.
+        data_tests:
+          - not_null
+
+      - name: duration_minutes
+        description: Minutes between entry and exit. Always positive in this table.
+        data_tests:
+          - not_null
+
+      - name: amount_charged
+        description: Revenue collected at exit. NULL for ~5% of sessions (drive-offs).
+
+      - name: payment_method
+        description: Lowercased payment channel (app, web, text).
+
+      - name: entry_camera_id
+        description: Camera that triggered the ENTRY event.
+
+      - name: exit_camera_id
+        description: Camera that triggered the EXIT event.
+
+      - name: session_date
+        description: Calendar date of the session (derived from entry_ts).
+        data_tests:
+          - not_null
+
+      - name: day_of_week_num
+        description: Numeric day of week (0=Sunday, 6=Saturday).
+
+      - name: day_of_week
+        description: Full day name (Monday, Tuesday, etc.).
+
+      - name: is_weekend
+        description: True for Saturday and Sunday sessions.
+        data_tests:
+          - not_null
+
+      - name: time_of_day_bucket
+        description: >
+          Entry hour bucketed as morning (5-11), afternoon (12-16),
+          evening (17-20), or overnight (all other hours).
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['morning', 'afternoon', 'evening', 'overnight']
+
+  - name: dim_lots
+    description: >
+      Clean lot dimension. One row per lot. Pass-through from stg_lots with
+      days_since_activation computed at query time.
+    columns:
+      - name: lot_id
+        description: Primary key — unique lot identifier.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: lot_name
+        description: Human-readable lot name.
+
+      - name: city
+        description: City name in title case.
+        data_tests:
+          - not_null
+
+      - name: state
+        description: Two-letter state code in uppercase.
+
+      - name: zip
+        description: ZIP code.
+
+      - name: capacity
+        description: Total parking spaces. NULL for one lot with no capacity on record.
+
+      - name: is_capacity_missing
+        description: True when capacity is NULL.
+        data_tests:
+          - not_null
+
+      - name: market_type
+        description: Standardized market segment — urban, suburban, or mixed_use.
+
+      - name: activation_date
+        description: Date the lot was activated in the system.
+
+      - name: owner_name
+        description: Name of the property owner.
+
+      - name: days_since_activation
+        description: Days between activation_date and today. Proxy for lot maturity.
+
+      - name: lot_capacity_tier
+        description: >
+          Capacity-based segment: small (< 75 spaces), medium (75–149),
+          large (>= 150), unknown when capacity is NULL.
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['small', 'medium', 'large', 'unknown']
+
+  - name: mart_lot_daily
+    description: >
+      Pre-aggregated fact table at lot × calendar day grain. Used by the
+      dashboard for trend charts, KPI cards, and occupancy analysis.
+    columns:
+      - name: lot_id
+        description: FK to dim_lots.
+        data_tests:
+          - not_null
+
+      - name: session_date
+        description: Calendar date.
+        data_tests:
+          - not_null
+
+      - name: total_sessions
+        description: Count of valid sessions for this lot on this day.
+
+      - name: total_revenue
+        description: Sum of amount_charged. Drive-off NULLs treated as 0.
+
+      - name: avg_duration_minutes
+        description: Average session duration in minutes.
+
+      - name: avg_price_per_session
+        description: Average amount charged per session (NULLs as 0).
+
+      - name: peak_concurrent_sessions
+        description: >
+          Maximum number of vehicles simultaneously present, derived via
+          sweep-line over entry/exit timestamps.
+
+      - name: occupancy_rate
+        description: >
+          peak_concurrent_sessions / capacity. NULL when capacity is unknown.
+          Values above 1.0 indicate data anomalies (tested in custom test).
+
+      - name: turnover_rate
+        description: >
+          total_sessions / capacity. How many times the lot turned over
+          relative to its size. NULL when capacity is unknown.
+
+      - name: has_local_event
+        description: True when a local event (concert, sports, festival) occurred in the same city on this date.
+
+
+# ── MetricFlow Semantic Layer ────────────────────────────────────────────────
+
+semantic_models:
+  - name: fct_sessions
+    description: >
+      Semantic model on the fct_sessions fact table. Defines the entities,
+      dimensions, and measures used to build all parking metrics.
+    model: ref('fct_sessions')
+
+    entities:
+      - name: session
+        type: primary
+        expr: session_id
+
+      - name: lot
+        type: foreign
+        expr: lot_id
+
+    dimensions:
+      - name: session_date
+        type: time
+        type_params:
+          time_granularity: day
+
+      - name: lot_id
+        type: categorical
+
+      - name: time_of_day_bucket
+        type: categorical
+
+      - name: day_of_week
+        type: categorical
+
+      - name: is_weekend
+        type: categorical
+
+      - name: payment_method
+        type: categorical
+
+    measures:
+      - name: sessions_count
+        description: Count of valid parking sessions.
+        agg: count
+        expr: session_id
+        agg_time_dimension: session_date
+
+      - name: total_revenue
+        description: Sum of amount charged across all sessions.
+        agg: sum
+        expr: amount_charged
+        agg_time_dimension: session_date
+
+      - name: avg_duration_minutes
+        description: Average session duration in minutes.
+        agg: average
+        expr: duration_minutes
+        agg_time_dimension: session_date
+
+
+  - name: dim_lots
+    description: >
+      Semantic model on the dim_lots dimension table. Exposes lot attributes
+      as dimensions so all fct_sessions metrics can be sliced by city,
+      market_type, capacity tier, and other lot properties.
+    model: ref('dim_lots')
+
+    entities:
+      - name: lot
+        type: primary
+        expr: lot_id
+
+    dimensions:
+      - name: city
+        type: categorical
+
+      - name: state
+        type: categorical
+
+      - name: market_type
+        type: categorical
+
+      - name: lot_capacity_tier
+        type: categorical
+
+
+metrics:
+  - name: total_revenue
+    label: Total Revenue
+    description: Total revenue collected across all valid sessions.
+    type: simple
+    type_params:
+      measure: total_revenue
+
+  - name: sessions_count
+    label: Sessions Count
+    description: Total count of valid parking sessions.
+    type: simple
+    type_params:
+      measure: sessions_count
+
+  - name: avg_session_duration
+    label: Avg Session Duration
+    description: Average duration of a parking session in minutes.
+    type: simple
+    type_params:
+      measure: avg_duration_minutes
+
+  - name: avg_revenue_per_session
+    label: Avg Revenue Per Session
+    description: Average revenue per session — total revenue divided by session count.
+    type: ratio
+    type_params:
+      numerator:
+        name: total_revenue
+      denominator:
+        name: sessions_count
+
+  - name: dynamic_pricing_lift
+    label: Dynamic Pricing Lift
+    description: >
+      Ratio of average revenue per session on weekends vs weekdays.
+      A value above 1.0 indicates dynamic pricing is generating higher
+      revenue on high-demand days. Proxy for pricing model effectiveness.
+    type: ratio
+    type_params:
+      numerator:
+        name: total_revenue
+        filter: "{{ Dimension('session__is_weekend') }} = true"
+        alias: weekend_revenue
+      denominator:
+        name: total_revenue
+        filter: "{{ Dimension('session__is_weekend') }} = false"
+        alias: weekday_revenue

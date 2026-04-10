@@ -22,11 +22,11 @@ deduped as (
 cleaned as (
 
     select
-        cast(event_date as date)            as event_date,
-        {{ initcap('city') }}               as city,
-        event_name,
-        lower(event_type)                   as event_type,
-        cast(expected_attendance as integer) as expected_attendance
+        cast(event_date           as date)                  as event_date,
+        cast({{ initcap('city') }} as varchar)              as city,
+        cast(event_name           as varchar)               as event_name,
+        cast(lower(event_type)    as varchar)               as event_type,
+        cast(expected_attendance  as integer)               as expected_attendance
 
     from deduped
 

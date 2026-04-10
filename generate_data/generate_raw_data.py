@@ -7,9 +7,17 @@ Generates three synthetic CSV files for the parking semantic layer demo:
 
 Run from the project root:
   python generate_data/generate_raw_data.py
+
+Session volume is calibrated so that smaller lots (cap 50-80) show
+40-60% weekend peak occupancy and weekday occupancy of 20-30%.
+Large lots show lower occupancy — realistic for airport/downtown garages.
+
+Occupancy is computed downstream as: peak_concurrent_sessions / capacity
+where peak_concurrent uses a sweep-line over entry/exit timestamps.
 """
 
 import csv
+import math
 import os
 import random
 from datetime import datetime, timedelta
@@ -75,13 +83,22 @@ LOTS = [
     },
 ]
 
-LOT_IDS = [lot["lot_id"] for lot in LOTS]
-
-LOT_CITY = {lot["lot_id"]: lot["city"] for lot in LOTS}
+LOT_IDS      = [lot["lot_id"] for lot in LOTS]
+LOT_CAPACITY = {lot["lot_id"]: lot["capacity"] or 85 for lot in LOTS}  # 85 fallback for NULL
 
 START_DATE = datetime(2024, 1, 1)
 END_DATE   = datetime(2024, 3, 31, 23, 59, 59)
 TOTAL_DAYS = 91
+
+# ---------------------------------------------------------------------------
+# Lot session weights — 1/sqrt(capacity) so smaller lots fill up faster
+# This produces a realistic story: boutique urban lots near capacity,
+# large airport structures with spare space.
+# ---------------------------------------------------------------------------
+
+_raw_weights = {lid: 1.0 / math.sqrt(cap) for lid, cap in LOT_CAPACITY.items()}
+_total_w     = sum(_raw_weights.values())
+LOT_WEIGHTS  = [_raw_weights[lid] / _total_w for lid in LOT_IDS]
 
 
 # ---------------------------------------------------------------------------
@@ -94,11 +111,33 @@ def random_ts(start: datetime, end: datetime) -> datetime:
 
 
 def weighted_hour(is_weekend: bool) -> int:
+    """
+    Weekend: sharp peak 10am-2pm (shopping/events).
+    Weekday: bimodal — morning commuter 7-9am + lunch 11am-1pm.
+    Heavy concentration produces realistic concurrent session counts.
+    """
     if is_weekend:
-        weights = [1, 1, 1, 1, 1, 1, 2, 3, 5, 8, 10, 12, 13, 12, 11, 10, 10, 11, 10, 8, 6, 4, 2, 1]
+        weights = [0, 0, 0, 0, 0, 0, 1, 2, 5, 10, 15, 18, 20, 18, 15, 12, 10, 8, 6, 4, 2, 1, 0, 0]
     else:
-        weights = [1, 1, 1, 1, 1, 1, 2, 5, 9, 8,  7,  8,  9,  8,  7,  7,  8,  7,  5, 3, 2, 2, 1, 1]
+        weights = [0, 0, 0, 0, 0, 1, 2, 8, 14, 11, 9, 12, 14, 11, 9, 8, 9, 8, 6, 4, 2, 1, 0, 0]
     return random.choices(range(24), weights=weights, k=1)[0]
+
+
+def session_duration_minutes() -> int:
+    """
+    Trimodal duration distribution calibrated for high overlap at peak:
+      25% short  (30–90 min)   — quick errands / shopping
+      40% medium (90–300 min)  — dining, appointments, events
+      35% long   (300–660 min) — commuters, employees, airport
+    Weighted average ≈ 285 min (4.75 hr), producing meaningful concurrency.
+    """
+    bucket = random.random()
+    if bucket < 0.25:
+        return random.randint(30, 90)
+    elif bucket < 0.65:
+        return random.randint(90, 300)
+    else:
+        return random.randint(300, 660)
 
 
 def is_peak_pricing(ts: datetime) -> bool:
@@ -144,13 +183,27 @@ def make_camera(lot_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Day selection — weekends 3.5x more sessions than weekdays
+# This ensures weekend occupancy is visibly higher in charts
+# ---------------------------------------------------------------------------
+
+def pick_session_day() -> datetime:
+    """Returns a base date, weighted so weekends are 3.5x more likely."""
+    all_days = [START_DATE + timedelta(days=i) for i in range(TOTAL_DAYS)]
+    day_weights = [3.5 if d.weekday() >= 5 else 1.0 for d in all_days]
+    return random.choices(all_days, weights=day_weights, k=1)[0]
+
+
+# ---------------------------------------------------------------------------
 # raw_parking_events.csv
 # ---------------------------------------------------------------------------
 
 def build_parking_events() -> list:
-    TARGET_SESSIONS  = 900
-    rows: list       = []
-    event_counter    = [1]
+    # 12,000 sessions → ~24,000+ events (enough for 40-60% peak occupancy
+    # on small lots, realistic lower occupancy on large lots)
+    TARGET_SESSIONS = 12_000
+    rows: list      = []
+    event_counter   = [1]
 
     def next_id() -> str:
         eid = f"EVT_{event_counter[0]:05d}"
@@ -159,59 +212,60 @@ def build_parking_events() -> list:
 
     def make_session_rows(lot_id: str, plate: str, entry_ts: datetime,
                           clock_bug: bool = False):
-        duration_min = random.randint(15, 480)
+        duration_min = session_duration_minutes()
         exit_ts = (entry_ts - timedelta(minutes=random.randint(1, 10))
                    if clock_bug
                    else entry_ts + timedelta(minutes=duration_min))
+        # Keep exit within the 90-day window
+        if exit_ts > END_DATE:
+            exit_ts = END_DATE
 
-        price      = calc_price(lot_id, entry_ts, duration_min)
-        pay_method = payment_method_value()
+        price       = calc_price(lot_id, entry_ts, duration_min)
+        pay_method  = payment_method_value()
         amount_exit = "" if random.random() < 0.05 else str(price)
         pm_str      = pay_method if pay_method else ""
 
         entry = {
-            "event_id": next_id(),
-            "lot_id": lot_id,
-            "license_plate": plate,
-            "event_type": "ENTRY",
+            "event_id":        next_id(),
+            "lot_id":          lot_id,
+            "license_plate":   plate,
+            "event_type":      "ENTRY",
             "event_timestamp": entry_ts.strftime("%Y-%m-%d %H:%M:%S"),
-            "amount_charged": "",
-            "payment_method": pm_str,
-            "camera_id": make_camera(lot_id),
+            "amount_charged":  "",
+            "payment_method":  pm_str,
+            "camera_id":       make_camera(lot_id),
         }
         exit_ = {
-            "event_id": next_id(),
-            "lot_id": lot_id,
-            "license_plate": plate,
-            "event_type": "EXIT",
+            "event_id":        next_id(),
+            "lot_id":          lot_id,
+            "license_plate":   plate,
+            "event_type":      "EXIT",
             "event_timestamp": exit_ts.strftime("%Y-%m-%d %H:%M:%S"),
-            "amount_charged": amount_exit,
-            "payment_method": pm_str,
-            "camera_id": make_camera(lot_id),
+            "amount_charged":  amount_exit,
+            "payment_method":  pm_str,
+            "camera_id":       make_camera(lot_id),
         }
         return entry, exit_
 
-    plates_pool = [make_license_plate() for _ in range(400)]
+    plates_pool = [make_license_plate() for _ in range(1_200)]
 
-    # ---- Normal sessions ----
+    # ── Normal sessions ───────────────────────────────────────────────────
     clock_bug_target = int(TARGET_SESSIONS * 0.01)
     clock_bugs_used  = 0
 
     for _ in range(TARGET_SESSIONS):
-        lot_id = random.choice(LOT_IDS)
-        plate  = random.choice(plates_pool)
+        # Lot weighted by 1/sqrt(capacity) — small lots fill up more
+        lot_id = random.choices(LOT_IDS, weights=LOT_WEIGHTS, k=1)[0]
+        plate  = random.choices(plates_pool, k=1)[0]
 
-        # Weight toward weekends
-        day_offset = random.randint(0, TOTAL_DAYS - 1)
-        base_day   = START_DATE + timedelta(days=day_offset)
-        if base_day.weekday() < 5 and random.random() < 0.3:
-            day_offset = random.randint(0, TOTAL_DAYS - 1)
-            base_day   = START_DATE + timedelta(days=day_offset)
-
-        hour = weighted_hour(base_day.weekday() >= 5)
-        ts   = base_day.replace(hour=hour,
-                                minute=random.randint(0, 59),
-                                second=random.randint(0, 59))
+        # Day: weekends 3.5x more likely
+        base_day = pick_session_day()
+        hour     = weighted_hour(base_day.weekday() >= 5)
+        ts       = base_day.replace(
+            hour=hour,
+            minute=random.randint(0, 59),
+            second=random.randint(0, 59),
+        )
         if ts > END_DATE:
             ts = ts.replace(hour=min(ts.hour, 22))
 
@@ -223,18 +277,20 @@ def build_parking_events() -> list:
         rows.append(entry)
         rows.append(exit_)
 
-    # ---- Inject ~3% duplicate ENTRY (camera misfire, no EXIT) ----
+    # ── Inject ~3% duplicate ENTRY (camera misfire, no EXIT) ─────────────
     misfire_target = int(TARGET_SESSIONS * 0.03)
     entry_rows     = [r for r in rows if r["event_type"] == "ENTRY"]
     for _ in range(misfire_target):
-        original   = random.choice(entry_rows)
-        dup        = dict(original)
+        original = random.choice(entry_rows)
+        dup      = dict(original)
         dup["event_id"] = next_id()
-        orig_ts    = datetime.strptime(original["event_timestamp"], "%Y-%m-%d %H:%M:%S")
-        dup["event_timestamp"] = (orig_ts + timedelta(seconds=random.randint(30, 119))).strftime("%Y-%m-%d %H:%M:%S")
+        orig_ts  = datetime.strptime(original["event_timestamp"], "%Y-%m-%d %H:%M:%S")
+        dup["event_timestamp"] = (
+            orig_ts + timedelta(seconds=random.randint(30, 119))
+        ).strftime("%Y-%m-%d %H:%M:%S")
         rows.append(dup)
 
-    # ---- Inject ~2% orphaned EXIT (no matching ENTRY) ----
+    # ── Inject ~2% orphaned EXIT (no matching ENTRY) ──────────────────────
     for _ in range(int(TARGET_SESSIONS * 0.02)):
         lot_id = random.choice(LOT_IDS)
         plate  = make_license_plate()   # fresh plate → no ENTRY in dataset
@@ -242,38 +298,38 @@ def build_parking_events() -> list:
         price  = round(BASE_PRICES.get(lot_id, 7.0) * random.uniform(0.5, 2.0), 2)
         pm     = payment_method_value()
         rows.append({
-            "event_id": next_id(),
-            "lot_id": lot_id,
-            "license_plate": plate,
-            "event_type": "EXIT",
+            "event_id":        next_id(),
+            "lot_id":          lot_id,
+            "license_plate":   plate,
+            "event_type":      "EXIT",
             "event_timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
-            "amount_charged": str(price),
-            "payment_method": pm if pm else "",
-            "camera_id": make_camera(lot_id),
+            "amount_charged":  str(price),
+            "payment_method":  pm if pm else "",
+            "camera_id":       make_camera(lot_id),
         })
 
-    # ---- Inject 8-10 LOT_UNKNOWN rows ----
+    # ── Inject 8-10 LOT_UNKNOWN rows ──────────────────────────────────────
     for _ in range(random.randint(8, 10)):
         ts    = random_ts(START_DATE, END_DATE)
         etype = random.choice(["ENTRY", "EXIT"])
         price = "" if etype == "ENTRY" else str(round(random.uniform(3.0, 15.0), 2))
         pm    = payment_method_value()
         rows.append({
-            "event_id": next_id(),
-            "lot_id": "LOT_UNKNOWN",
-            "license_plate": make_license_plate(),
-            "event_type": etype,
+            "event_id":        next_id(),
+            "lot_id":          "LOT_UNKNOWN",
+            "license_plate":   make_license_plate(),
+            "event_type":      etype,
             "event_timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
-            "amount_charged": price,
-            "payment_method": pm if pm else "",
-            "camera_id": "CAM_UNKNOWN_01",
+            "amount_charged":  price,
+            "payment_method":  pm if pm else "",
+            "camera_id":       "CAM_UNKNOWN_01",
         })
 
     random.shuffle(rows)
 
     fieldnames = ["event_id", "lot_id", "license_plate", "event_type",
                   "event_timestamp", "amount_charged", "payment_method", "camera_id"]
-    out_path = os.path.join(OUTPUT_DIR, "raw_parking_events.csv")
+    out_path   = os.path.join(OUTPUT_DIR, "raw_parking_events.csv")
     with open(out_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -354,7 +410,7 @@ def build_local_events() -> list:
     ]
 
     fieldnames = ["event_date", "city", "event_name", "event_type", "expected_attendance"]
-    out_path = os.path.join(OUTPUT_DIR, "raw_local_events.csv")
+    out_path   = os.path.join(OUTPUT_DIR, "raw_local_events.csv")
     with open(out_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
