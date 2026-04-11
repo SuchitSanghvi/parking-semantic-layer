@@ -59,9 +59,20 @@ def _parse_bullet_list(output: str) -> list[str]:
 
 @functools.lru_cache(maxsize=1)
 def get_metric_names() -> set[str]:
-    """Return all metric names from MetricFlow (authoritative)."""
+    """Return all metric names from MetricFlow (authoritative).
+
+    mf list metrics outputs bullets in the format:
+      • metric_name: dim1, dim2, ... and N more
+    We extract only the part before the colon.
+    """
     output = _run_mf(["list", "metrics"])
-    return set(_parse_bullet_list(output))
+    names = set()
+    for item in _parse_bullet_list(output):
+        # Strip inline dimension summary: "total_revenue: lot__city, ..."
+        name = item.split(":")[0].strip()
+        if name:
+            names.add(name)
+    return names
 
 
 @functools.lru_cache(maxsize=1)
