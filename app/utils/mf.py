@@ -123,4 +123,35 @@ def run_metric_query(spec: dict) -> pd.DataFrame:
                 f"MetricFlow query failed:\n{result.stderr or result.stdout}"
             )
 
-        return pd.read_csv(tmp_csv)
+        # MetricFlow doesn't write the CSV when the result is 0 rows
+        if not os.path.exists(tmp_csv):
+            raise ValueError(
+                "No data found for that query. The dataset covers Jan–Mar 2024. "
+                "Try asking about a specific date range, day of week, or lot — "
+                "for example: \"Which city had the highest revenue in February 2024?\""
+            )
+
+        df = pd.read_csv(tmp_csv)
+        return _prettify_columns(df)
+
+
+def _prettify_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Make MetricFlow output column names human-readable.
+
+    MetricFlow uses entity__dimension naming (e.g. lot__market_type,
+    session__day_of_week). Strip the entity prefix, replace underscores
+    with spaces, and title-case everything.
+
+    Examples:
+      lot__market_type    → Market Type
+      session__day_of_week → Day Of Week
+      avg_session_duration → Avg Session Duration
+      total_revenue        → Total Revenue
+    """
+    def _clean(col: str) -> str:
+        if "__" in col:
+            col = col.split("__", 1)[1]
+        return col.replace("_", " ").title()
+
+    return df.rename(columns=_clean)

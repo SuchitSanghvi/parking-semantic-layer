@@ -55,6 +55,20 @@ Grain / time dimension:
   session__session_date — use this for any date or time-based grouping.
   Granularities: day (default), week, month.
 
+IMPORTANT — data date range: the dataset covers January 1 2024 through March 31 2024 only.
+  Never generate date filters referencing 2025 or 2026 — no data exists for those years.
+  When a question uses relative time ("last month", "this year", "recently"), interpret it
+  relative to the dataset window (Q1 2024), not the current calendar date.
+
+Date filter syntax — always use {{ Dimension('session__session_date') }} with ISO dates:
+  "last month" (March 2024):
+    "{{ Dimension('session__session_date') }} >= '2024-03-01' AND {{ Dimension('session__session_date') }} <= '2024-03-31'"
+  "in February":
+    "{{ Dimension('session__session_date') }} >= '2024-02-01' AND {{ Dimension('session__session_date') }} <= '2024-02-29'"
+  "last weekend" → do NOT add a date filter, just use: "{{ Dimension('session__is_weekend') }} = true"
+  "on Fridays" → "{{ Dimension('session__day_of_week') }} = 'Friday'"
+  Never use __month, __week, or __year suffix on dimension names in WHERE clauses.
+
 WHERE filter syntax — MUST use MetricFlow Dimension() wrapper exactly as shown:
   "{{ Dimension('session__is_weekend') }} = true"
   "{{ Dimension('session__day_of_week') }} = 'Friday'"
@@ -92,7 +106,8 @@ Return valid JSON only. No explanation, no markdown, no code fences."""
 _SUMMARIZE_SYSTEM = """You are a data analyst summarizing query results for a parking property owner.
 Write exactly one sentence. Be specific — include the top value or key number from the data.
 Avoid jargon. Write as if explaining to a non-technical business owner.
-Example: "Mission St lot generated the most revenue last weekend at $1,240."
+Use plain text only — no markdown, no asterisks, no underscores, no bold, no italics.
+Example: San Francisco generated the highest total revenue this month at $55,841.
 """
 
 
@@ -102,7 +117,7 @@ def translate_to_metric_spec(question: str) -> dict:
     Returns {"error": True, "message": "..."} if the question is out of scope.
     """
     response = _client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-haiku-4-5-20251001",
         max_tokens=500,
         system=_TRANSLATE_SYSTEM,
         messages=[{"role": "user", "content": question}],
@@ -121,7 +136,7 @@ def summarize_result(question: str, df: pd.DataFrame) -> str:
     prompt = f"Question: {question}\n\nData:\n{data_preview}"
 
     response = _client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-haiku-4-5-20251001",
         max_tokens=150,
         system=_SUMMARIZE_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
