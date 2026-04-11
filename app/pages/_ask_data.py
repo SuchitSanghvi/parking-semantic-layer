@@ -34,13 +34,14 @@ def render():
             st.session_state["prefill"] = ex
 
     # ── Input ──────────────────────────────────────────────────────────────────
-    question = st.text_input(
-        "Question",
-        value=st.session_state["prefill"],
-        placeholder="e.g. Which lot had the highest revenue in March 2024?",
-        label_visibility="collapsed",
-    )
-    ask = st.button("Ask", type="primary")
+    with st.form("ask_form", clear_on_submit=False):
+        question = st.text_input(
+            "Question",
+            value=st.session_state["prefill"],
+            placeholder="e.g. Which lot had the highest revenue in March 2024?",
+            label_visibility="collapsed",
+        )
+        ask = st.form_submit_button("Ask", type="primary")
 
     if ask and question.strip():
         # Step 1 — translate to metric spec
@@ -88,3 +89,4 @@ def render():
 
     elif ask and not question.strip():
         st.warning("Please enter a question first.")
+
