@@ -31,16 +31,40 @@ _MF_BIN   = _local_mf if os.path.exists(_local_mf) else (
 )
 
 
+# Time dimensions that require TimeDimension('name', 'day') syntax in MetricFlow filters.
+_TIME_DIMS = {"session__session_date"}
+
+
 def _ensure_dimension_syntax(where: str) -> str:
     """
-    Auto-wrap bare dimension references missing {{ Dimension(...) }}.
-    e.g. "session__is_weekend = true" → "{{ Dimension('session__is_weekend') }} = true"
+    Auto-wrap bare dimension references and fix Dimension() → TimeDimension() for date columns.
+
+    1. Bare names like "session__is_weekend" → "{{ Dimension('session__is_weekend') }}"
+    2. Bare time names like "session__session_date" → "{{ TimeDimension('session__session_date', 'day') }}"
+    3. Already-wrapped Dimension('session__session_date') → TimeDimension('session__session_date', 'day')
+       (safety net in case the LLM uses the wrong wrapper)
     """
-    return re.sub(
+    # Step 1: wrap bare entity__dimension names
+    def _wrap(m: re.Match) -> str:
+        name = m.group(1)
+        if name in _TIME_DIMS:
+            return f"{{{{ TimeDimension('{name}', 'day') }}}}"
+        return f"{{{{ Dimension('{name}') }}}}"
+
+    where = re.sub(
         r"(?<!\')(?<!\()\b([a-z]+__[a-z_]+)\b(?!\')(?!\))",
-        lambda m: f"{{{{ Dimension('{m.group(1)}') }}}}",
+        _wrap,
         where,
     )
+
+    # Step 2: fix any Dimension('session__session_date') the LLM already emitted
+    for td in _TIME_DIMS:
+        where = where.replace(
+            f"Dimension('{td}')",
+            f"TimeDimension('{td}', 'day')",
+        )
+
+    return where
 
 
 def _validate_spec(spec: dict) -> None:

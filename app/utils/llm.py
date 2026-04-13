@@ -47,13 +47,14 @@ IMPORTANT — data date range: the dataset covers January 1 2024 through March 3
   When a question uses relative time ("last month", "this year", "recently"), interpret it
   relative to the dataset window (Q1 2024), not the current calendar date.
 
-Date filter syntax — always use {{{{ Dimension('session__session_date') }}}} with ISO dates:
+Date filter syntax — ALWAYS use TimeDimension (NOT Dimension) for session__session_date:
   "last month" (March 2024):
-    "{{{{ Dimension('session__session_date') }}}} >= '2024-03-01' AND {{{{ Dimension('session__session_date') }}}} <= '2024-03-31'"
+    "{{{{ TimeDimension('session__session_date', 'day') }}}} >= '2024-03-01' AND {{{{ TimeDimension('session__session_date', 'day') }}}} <= '2024-03-31'"
   "in February":
-    "{{{{ Dimension('session__session_date') }}}} >= '2024-02-01' AND {{{{ Dimension('session__session_date') }}}} <= '2024-02-29'"
+    "{{{{ TimeDimension('session__session_date', 'day') }}}} >= '2024-02-01' AND {{{{ TimeDimension('session__session_date', 'day') }}}} <= '2024-02-29'"
   "last weekend" → do NOT add a date filter, just use: "{{{{ Dimension('session__is_weekend') }}}} = true"
   "on Fridays" → "{{{{ Dimension('session__day_of_week') }}}} = 'Friday'"
+  NEVER use Dimension() for session__session_date — MetricFlow will error. Always use TimeDimension('session__session_date', 'day').
   Never use __month, __week, or __year suffix on dimension names in WHERE clauses.
 
 WHERE filter syntax — MUST use MetricFlow Dimension() wrapper exactly as shown:
