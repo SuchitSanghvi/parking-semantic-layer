@@ -1,6 +1,6 @@
-# Parking Portfolio Intelligence
+# Parking Asset Intelligence
 
-A dbt semantic layer on raw parking event data, with a Streamlit app for portfolio analytics and natural language querying.
+End-to-end analytics engineering on parking asset data: raw events to tested metrics to a natural language query interface.
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)
 ![dbt](https://img.shields.io/badge/dbt-1.8-FF694B?style=flat-square&logo=dbt&logoColor=white)
@@ -11,17 +11,13 @@ A dbt semantic layer on raw parking event data, with a Streamlit app for portfol
 
 ---
 
-## Live Demo
+## Screenshots
 
 ### Portfolio Dashboard:
-<img src="Screenshot 2026-04-12 at 9.51.27 PM.png" width="700"/>
-
---------------------------------------------------------------
+<img src="docs/screenshots/Screenshot 2026-04-12 at 9.51.27 PM.png" width="700"/>
 
 ### Ask Data:
-<img src="image.png" width="700"/>
-
---------------------------------------------------------------
+<img src="docs/screenshots/image.png" width="700"/>
 
 **Live app:** [Streamlit Cloud URL -- add after deployment]
 
@@ -29,9 +25,11 @@ A dbt semantic layer on raw parking event data, with a Streamlit app for portfol
 
 ## The Problem
 
-AirGarage replaces fragmented parking operations with a data-rich OS for property owners. Their Intelligence Dashboard gives owners real-time occupancy, revenue, and pricing signals, but that only works if the underlying data is well-defined and trustworthy. Parking data is messy at the source: LPR cameras fire separate entry and exit events, camera misfires create duplicate records, and properties may have incomplete metadata.
+Parking asset owners have historically operated blind. Monthly PDF statements from traditional operators, no real-time visibility, no way to know if a lot underperformed last Friday or whether a local event drove a revenue spike. Modern parking OS platforms change this with live occupancy data, dynamic pricing, and owner-facing dashboards - but that intelligence layer only works if the data underneath it is clean, well-defined, and consistent.
 
-This project models the full data layer: raw camera events cleaned, tested, and exposed as named business metrics that a dashboard or an AI can query reliably. The dbt Semantic Layer is not just internal tooling -- it is the data contract between raw events and everything downstream: owner dashboards, pricing algorithms, and natural language queries.
+The raw data is not clean. LPR cameras fire separate entry and exit events per vehicle trigger, so a single parking session arrives as two unlinked rows. Camera misfires create duplicate entry records. Properties may have no capacity on file. Lot IDs from decommissioned facilities still appear in the event stream. None of this is visible to a property owner looking at a revenue chart, but all of it affects whether that chart is telling the truth.
+
+**This project** builds the data layer that sits between raw LPR events and trusted business metrics. Raw camera events are cleaned, flagged, tested, and assembled into sessions. Those sessions feed a dimensional model and a dbt Semantic Layer that defines occupancy rate, revenue, pricing lift, and session patterns as named, versioned, and documented metrics. The same definitions that power an owner dashboard can feed a dynamic pricing algorithm or answer a natural language question -- with the same numbers, computed the same way, every time.
 
 ---
 
@@ -70,13 +68,11 @@ Raw LPR Events  (3 messy CSVs)
   ├── mart_lot_daily     pre-aggregated: occupancy rate, turnover rate
   └── dbt Semantic Layer 7 metrics, 12 dimensions, 4 metric types
         |
-        v
+        v 
   Streamlit App
   ├── Portfolio Dashboard    queries mart_lot_daily directly (fast reads)
   └── Ask Your Data          NL question -> metric spec -> MetricFlow -> DuckDB
 ```
-
-[DIAGRAM: data pipeline architecture -- raw events to Streamlit app]
 
 ---
 
@@ -84,7 +80,7 @@ Raw LPR Events  (3 messy CSVs)
 
 The project follows a star schema pattern centered on parking sessions.
 
-[SCREENSHOT: dbt docs lineage graph showing all models]
+![alt text](<Screenshot 2026-04-13 at 8.59.56 AM.png>)
 
 **Core models:**
 
