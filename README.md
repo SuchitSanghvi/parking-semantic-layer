@@ -183,6 +183,20 @@ round({{ safe_divide('peak_concurrent_sessions', 'capacity') }}, 4)
 {% endmacro %}
 ```
 
+`initcap(column)` title-cases a string column. DuckDB 1.1.x has no native `INITCAP()` function, so this macro implements it by splitting on spaces, uppercasing the first character of each word, and rejoining. Used in `stg_lots` to normalize inconsistent city casing from the raw source (e.g. `san francisco`, `SAN FRANCISCO`, `San Francisco` all become `San Francisco`).
+
+```sql
+{% macro initcap(column) %}
+    array_to_string(
+        list_transform(
+            string_split(lower({{ column }}), ' '),
+            x -> upper(left(x, 1)) || right(x, length(x) - 1)
+        ),
+        ' '
+    )
+{% endmacro %}
+```
+
 ### Testing
 
 18+ dbt schema tests across all mart models, plus 3 custom SQL tests:
