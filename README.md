@@ -80,7 +80,7 @@ Raw LPR Events  (3 messy CSVs)
 
 The project follows a star schema pattern centered on parking sessions.
 
-![alt text](<Screenshot 2026-04-13 at 8.59.56 AM.png>)
+<img src="docs/screenshots/Screenshot 2026-04-13 at 8.59.56 AM.png" width="700"/>
 
 **Core models:**
 
