@@ -1,5 +1,5 @@
 """
-streamlit_app.py — Parking Portfolio Intelligence
+streamlit_app.py — Parking Asset Intelligence
 Main entrypoint. Single-page app with horizontal tabs.
 
 Run from project root:
@@ -22,7 +22,7 @@ _VENV_PYTHON     = os.path.join(_PROJECT_ROOT, "venv", "bin", "python")
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Parking Portfolio Intelligence",
+    page_title="Parking Asset Intelligence",
     page_icon="🅿️",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -144,18 +144,22 @@ build_warehouse()
 st.markdown("""
 <div class="app-header">
   <span class="app-header-icon">🅿️</span>
-  <span class="app-header-title">Parking Portfolio Intelligence</span>
+  <span class="app-header-title">Parking Asset Intelligence</span>
 </div>
 """, unsafe_allow_html=True)
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 from app.pages._dashboard import render as render_dashboard
 from app.pages._ask_data  import render as render_ask_data
+from app.pages._about     import render as render_about
 
-tab1, tab2 = st.tabs(["Dashboard", "Ask Your Data"])
+tab1, tab2, tab3 = st.tabs(["Dashboard", "Ask Your Data", "About"])
 
 with tab1:
     render_dashboard()
 
 with tab2:
     render_ask_data()
+
+with tab3:
+    render_about()
