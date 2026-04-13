@@ -36,6 +36,12 @@ Grain / time dimension:
   session__session_date — use this for any date or time-based grouping.
   Granularities: day (default), week, month.
 
+Time-offset metrics rule:
+  cumulative_revenue and wow_revenue_change REQUIRE "metric_time" in the
+  group_by list. MetricFlow will error without it. Always include
+  "metric_time" when using either of these metrics. You may add other
+  dimensions alongside metric_time.
+
 IMPORTANT — data date range: the dataset covers January 1 2024 through March 31 2024 only.
   Never generate date filters referencing 2025 or 2026 — no data exists for those years.
   When a question uses relative time ("last month", "this year", "recently"), interpret it

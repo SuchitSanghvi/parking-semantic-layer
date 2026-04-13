@@ -60,6 +60,9 @@ def _validate_spec(spec: dict) -> None:
         )
 
     for dim in spec.get("group_by", []):
+        # metric_time is a built-in MetricFlow dimension, not returned by mf list dimensions
+        if dim == "metric_time":
+            continue
         if dim not in valid_dims:
             raise ValueError(
                 f"Unknown dimension '{dim}'. "
@@ -89,6 +92,14 @@ def run_metric_query(spec: dict) -> pd.DataFrame:
         raise ValueError(spec.get("message", "Query is outside available metrics."))
 
     _validate_spec(spec)
+
+    # Offset and cumulative metrics require metric_time in group_by.
+    # Auto-inject it if the LLM forgot.
+    _TIME_METRICS = {"wow_revenue_change", "cumulative_revenue"}
+    if spec.get("metric") in _TIME_METRICS:
+        group_by = spec.get("group_by", [])
+        if "metric_time" not in group_by:
+            spec.setdefault("group_by", []).insert(0, "metric_time")
 
     # Work in a temp directory: copy warehouse + write a temp profiles.yml
     # so MetricFlow gets exclusive access to the copy without conflicting

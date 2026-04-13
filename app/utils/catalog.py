@@ -31,6 +31,8 @@ _EXAMPLES = {
     "avg_session_duration":    "What is avg session duration by market type?",
     "avg_revenue_per_session": "Which lot has the highest avg revenue per session?",
     "dynamic_pricing_lift":    "Which lots show the highest weekend pricing lift?",
+    "cumulative_revenue":      "What is cumulative revenue for San Francisco lots this month?",
+    "wow_revenue_change":      "Which lots had the biggest week-over-week revenue increase?",
 }
 
 
