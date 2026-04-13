@@ -27,6 +27,11 @@ def render():
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
+    # ── Date validation ───────────────────────────────────────────────────────
+    if end_date < start_date:
+        st.error("'To' date must be on or after 'From' date.")
+        return
+
     # ── KPI query ─────────────────────────────────────────────────────────────
     kpi = run_query(f"""
         SELECT
@@ -39,20 +44,44 @@ def render():
         WHERE session_date BETWEEN '{start_date}' AND '{end_date}'
     """).iloc[0]
 
+    import math
+
+    def _safe_int(v):
+        try:
+            return int(v) if v is not None and not (isinstance(v, float) and math.isnan(v)) else None
+        except Exception:
+            return None
+
+    def _safe_float(v):
+        try:
+            return float(v) if v is not None and not (isinstance(v, float) and math.isnan(v)) else None
+        except Exception:
+            return None
+
+    rev      = _safe_float(kpi['total_revenue'])
+    occ      = _safe_float(kpi['avg_occupancy'])
+    sessions = _safe_int(kpi['total_sessions'])
+    dur      = _safe_float(kpi['avg_duration'])
+
+    no_data = rev is None and sessions is None
+    if no_data:
+        st.warning("No data found for the selected date range.")
+        return
+
     # ── KPI cards ─────────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
     _kpi_card(c1, "Total Revenue",
-              f"${kpi['total_revenue']:,.0f}",
+              f"${rev:,.0f}" if rev is not None else "N/A",
               f"{start_date} – {end_date}")
     _kpi_card(c2, "Avg Occupancy Rate",
-              f"{kpi['avg_occupancy']*100:.1f}%" if kpi['avg_occupancy'] else "N/A",
+              f"{occ*100:.1f}%" if occ is not None else "N/A",
               "Lots with known capacity")
     _kpi_card(c3, "Total Sessions",
-              f"{int(kpi['total_sessions']):,}",
+              f"{sessions:,}" if sessions is not None else "N/A",
               "Valid sessions only")
     _kpi_card(c4, "Avg Session Duration",
-              f"{kpi['avg_duration']:.0f} min",
-              f"≈ {kpi['avg_duration']/60:.1f} hours")
+              f"{dur:.0f} min" if dur is not None else "N/A",
+              f"≈ {dur/60:.1f} hours" if dur is not None else "")
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 

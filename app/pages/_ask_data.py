@@ -18,6 +18,16 @@ _EXTRA_EXAMPLES = [
 
 
 def render():
+    try:
+        _render()
+    except Exception as e:
+        st.error(
+            f"Something went wrong: {e}\n\n"
+            "Please try refreshing the page or asking a different question."
+        )
+
+
+def _render():
     # ── Session state init ─────────────────────────────────────────────────────
     # Use a separate "_prefill" key for button-driven pre-fill because
     # Streamlit's text_input widget owns its key and cannot be modified
